@@ -1,0 +1,254 @@
+---
+title: "The Influence of AP-1 Transcription Factors on Malignant Melanoma and Sox10."
+author: "Dhruv Patel"
+date: "Dec 8, 2022"
+output: 
+  beamer_presentation:
+    theme: "Pittsburgh"
+    colortheme: "orchid"
+    fonttheme: "structurebold"
+    slide_level: 2
+classoption: "aspectratio=169"
+fontsize: 11pt
+urlcolor: blue
+---
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# echo=FALSE will stop the code chunk from appearing in the knit document
+# warning=FALSE and message=FALSE will stop R messages from appearing in the knit document
+library(tidyverse)
+library(rpart)
+library(partykit)
+```
+
+## Introduction
+
+Cellular Homeostasis consists of the processes involved in maintaining the internal steady state of the a cell. This presentation
+outlines how protein levels respond to different experimental conditions, and tries to form a general consensus on what is considered "good" cellular homeostasis and how to change "bad" cellular homeostasis to "good". 
+
+
+## The Dataset
+
+```{r, echo=FALSE, eval=TRUE, fig.width=4.5, fig.height=4.5, message=FALSE, show_col_types=FALSE}
+
+data <- read_csv("STA130_Course_Project.csv")
+```
+
+* The dataset consists of 22 AP-1 Transcription Factors which are essentially seen as the proteins which are observed (causes) and there are 4 other phenotype proteins which are seen as outcomes. In addition the dataset contains 4 other variables which are the specific experimental conditions 
+under which the measurements were taken. 
+* For the purpose of our analysis, we will mainly be focusing on the ATF4 and ATF2 AP-1 Transcription Factors and the Sox10 phenotypical outcome. 
+* This phenotypical protein is a marker for malignant melanoma which is a form of skin cancer. 
+
+## What Transcription Factors are Most Predictive of the Sox10 Phenotypical Outcome?
+* Using a classification tree we can see which proteins are most prominent in predicting the presence of the Sox10 phenotypical outcome, at the 0.5 h timepoint using Vem + Tram drug combination. 
+
+## Classification Tree
+```{r fig.height=5, echo=FALSE, eval=TRUE, out.height="80%"}
+sox1005 <- data %>% select(-NF_kappaB,	-MiTFg, -AXL) %>% filter(Timepoint == "0.5 h", drug_id == 2, dose_id == 1)
+
+tree1 <- rpart(Sox10 ~ Phospho_c_Fos+Phospho_c_Jun+Phospho_ATF2+Phospho_Fra1+c_Fos+c_Jun+Fra1+JunD+ATF2+JunB+Fra2+ATF4+Phospho_ATF4+Phospho_Erk1+NGFR	+Phospho_ATF1+ATF6+Phospho_S6+ATF3+ATF5+Phospho_p38+Ki_67, data=sox1005)
+
+tree1 %>% as.party() %>% plot(type="simple", tp_args = list(FUN = function(info) list(format(info$prediction), format(paste("n -", info$n)), format(paste(round(info$err, 0.0001), "% err", sep="")))))
+
+```
+
+## Barplot
+\begingroup
+\fontsize{10}{12}
+* This barplot shows that the two most important proteins in discovering Sox10 are ATF4 and ATF2.
+* This means we can focus our analysis on these two protiens to discover how different experimental procedures affect them. 
+
+\endgroup
+
+\vspace{-4em}
+```{r, eval=TRUE, echo=FALSE, fig.height=3, fig.width=7}
+barplot(tree1$variable.importance, las=2, ylab = "Importance")
+
+```
+
+
+## Are Protein Levels of ATF4 Different across experimental conditions? (Hypothesis Testing)
+* To begin our analysis, we will test whether the protein levels of ATF4 are affected by different drugs. 
+* This is done by comparing the mean protein levels of the ATF4 protein under 0.5h and 0.1 uM dosage over the Vem and Vem + Tram drugs. 
+```{r echo=FALSE, fig.height=1.5, fig.width=4, message=FALSE}
+
+con_data <- data %>% filter(Timepoint == "0.5 h", dose_id == 1) %>% select(ATF4, Drugs, drug_id)
+
+# Visualization
+
+table <- con_data %>%
+  group_by(Drugs) %>%
+  summarize(avg = mean(ATF4))
+visual <- table %>% 
+  ggplot(aes(x=Drugs, y=avg)) +
+  geom_col(aes()) +
+  labs(x="Drug Type", y="Average Protein Level of ATF4")+
+  ggtitle("Average of protein level ATF4 by Drug Type") + coord_flip()
+
+visual
+
+```
+
+## Analysis of Figure 1.1
+
+* In Fig 1.1 we do not see the significant difference in mean of average protein level ATF4 based on the different drugs which are Vem and Vem + Tram. It shows that when Vem + Tram used has little higher average protein level of ATF4 then when just using Vem, however a formal hypothesis test can confirm whether there this difference slight difference is significant. 
+
+## Hypothesis Testing Procedure:
+
+* Null Hypothesis: ($H_0$): $\mu_1 = \mu_2$
+* In other words, the average protein levels are the same across the two different experimental conditions
+* Alternate Hypothesis: ($H_1$) $\mu_1 \ne \mu_2$
+* The average protein levels are different across the two experimental conditions
+Note: $\mu_{1}$ is the mean of protein level when Vem used and $\mu_{1}$ is the mean of protein level when Vem + Trar used
+
+## Plot
+```{r, echo=FALSE, message=FALSE, results=FALSE, eval=TRUE, fig.width=4.5, fig.height=2}
+# Test Statistic
+set.seed(321)
+test_stat <- con_data %>%
+  group_by(drug_id) %>%
+  summarize(means = mean(ATF4)) %>%
+  summarize(value = diff(means))
+test_stat <- as.numeric(test_stat)
+test_stat
+
+# Simulation
+set.seed(321)
+repetitions <- 1000
+simulated_values <- rep(NA, repetitions)
+for(i in 1:repetitions){
+  sim_data <- con_data %>%
+    mutate(drug_id = sample(drug_id))
+  sim_value <- sim_data %>%
+    group_by(drug_id) %>%
+    summarize(means = mean(ATF4)) %>%
+    summarize(value = diff(means))
+  simulated_values[i] <- as.numeric(sim_value)
+}
+
+sim <- tibble(mean_diff = simulated_values)
+sim %>% ggplot(aes(x=mean_diff)) + geom_histogram(bins=50) + labs(x="Mean Difference", y="Count")
+
+ex <- sim %>%
+  filter(abs(mean_diff) >= abs(test_stat)) %>%
+  summarize(n())
+p_value <- as.numeric(ex)
+p_value
+```
+
+* P-Value produced by this plot is 0.
+
+## Results
+* Based on the simulation that we did the p-value was 0. Which means that we have no chance of observing the value that is at least as extreme as the test statistics assuming the null hypothesis is true.  
+
+* This means we can reject the null hypothesis and conclude that there is a difference in the protein levels of the AP-1 Transcription factor ATF4 when exposed to different drugs at the timepoint of 0.5h and 0.1 uM dosage amount. 
+
+## Do Protein Levels in an Experimental Condition Change Over Time?
+* We want to examine time plays a role in the protein levels of the ATF4 transcription factor. 
+
+\begingroup
+\fontsize{10}{12}
+* Null Hypothesis: ($H_0$): $\mu_1 = \mu_2$
+Protein levels of the ATF4 Transcription Factor are the same over two timepoints. 
+
+* Alternate Hypothesis: ($H_1$): $\mu_1 \ne \mu_2$
+Protein levels of the ATF4 Transcription Factor are different over two timepoints. 
+
+* For this hypothesis test we will look at the ATF4 protein under the Vem drug and 0.1 uM dosage amount at the 0.5 h mark and the 2 h mark. 
+
+\endgroup
+
+
+## Plot
+```{r, echo=FALSE, eval=TRUE, figures-side, fig.show="hold", out.width="49%", out.height="100%"}
+ATF4data <- data %>% select(ATF4, timepoint_id, Timepoint, drug_id, Drugs, dose_id, Doses, Rep) %>% filter(Timepoint == "0.5 h" | Timepoint == "2 h") %>% filter(drug_id == 1 & dose_id == 1)
+
+ATF4data %>% ggplot(aes(x=Timepoint)) + geom_bar() + theme(axis.title.x = element_text(size=30), axis.title.y = element_text(size=30))
+
+test_stat <- ATF4data %>% group_by(Timepoint) %>% summarise(mean=mean(ATF4)) %>% summarise(value = diff(mean))
+test_stat <- as.numeric(test_stat)
+
+set.seed(100)
+repetitions <- 1000
+simulated_values <- rep(NA, repetitions)
+
+for (i in 1:repetitions){
+  
+  simdata <- ATF4data %>% mutate(groups = sample(Timepoint))
+  
+  simstat <- simdata %>% group_by(groups) %>% summarise(mean=mean(ATF4)) %>% summarise(value = diff(mean))
+  
+  simulated_values[i] <- as.numeric(simstat)
+  
+}
+
+sim <- tibble(mean_diff = simulated_values)
+
+sim %>% ggplot(aes(x=mean_diff)) + geom_histogram(bins=50) + labs(x="Mean Difference", y="Count") + theme(axis.title.x = element_text(size=30), axis.title.y = element_text(size=30), axis.text = element_text(size=15))
+num_more_extreme <- sim %>% filter(abs(mean_diff) >= abs(test_stat)) %>% summarise(n())
+p_value <- as.numeric(num_more_extreme)
+```
+
+
+## Results: 
+
+```{r}
+p_value
+
+```
+
+* The test_statistic we have gathered is that there is a 0.1214218 difference between the means of the ATF4 protein levels between the two timepoints. 
+* The two-sided hypothesis test produces a p-value of 0 which allows us to reject the null hypothesis and conclude that protein levels change over time, even when exposed to the same experimental conditions.
+
+## What is the relationship between different proteins at a specific time?
+
+* To analyze the relationship between different proteins under a specific experimental condition, a correlation test must be performed. 
+* We can compute the $R^2$ values for the correlation of the two proteins which are the largest markers of the Sox10 phenotypical outcome. 
+
+```{r, eval=TRUE, echo=FALSE, show_message=FALSE}
+correlation_data <- data %>% select(ATF4, ATF2, dose_id, Timepoint, drug_id) %>% filter(dose_id == 1, drug_id == 2, Timepoint == "0.5 h")
+bootstrap_data <- correlation_data %>% select(ATF4, ATF2)
+```
+
+## Results: 
+
+```{r, eval=TRUE, echo=TRUE}
+cor(correlation_data$ATF4, correlation_data$ATF2)
+```
+
+* The correlation between ATF4 and ATF2 proteins is approximately 0.73 which means that there is a strong positive linear relationship between the two proteins. 
+
+
+## Can we predict Phenotypical Outcomes from AP-1 Transcription Factors? 
+
+* We can attempt to predict Phenotypical Outcomes from AP-1 Transcription Factors by fitting a simple linear regression model. 
+
+```{r, eval=TRUE, echo=FALSE, fig.width=3, fig.height=2}
+
+tidydata <- data %>% select(ATF4, Sox10, Timepoint, drug_id, dose_id, Rep)  %>% filter(Timepoint == "2 h") %>% filter(drug_id == 2, dose_id == 2, Rep == 1)
+
+tidydata %>% ggplot(aes(x=ATF4, y=Sox10)) + geom_point(alpha = 0.5) + geom_smooth(method=lm, se=FALSE) + labs(x="ATF4", y="Sox10")
+
+cor(tidydata$ATF4, tidydata$Sox10)
+
+```
+## Results: 
+* The linear regression model shows us that there is some correlation between the ATF4 transcription factor, but also shows that this phenotype isn't the only protein that influences Sox10, since the correlation is only approximately 0.21. 
+* In addition, it confirms the results drawn by the classification tree which relied on several proteins to make accurate conclusions about the Sox10 phenotype. 
+
+## Conclusion
+
+* Through these 4 statistical methods, we were able to confirm that the ATF4 and ATF2 transcription factors were the most important in predicting the Sox10 phenotype which is an marker for malignant melanoma (a form of skin cancer). 
+* In addition, the hypothesis tests confirmed that protein levels are affected by the experimental conditions upon which the ATF4 proteins are placed. 
+* Combining this with the fact that there is a strong correlation between ATF4 and ATF2 transcription factors, we can conclude that good cellular homeostasis occurs when the cells are exposed to the conditions in which the Sox10 phenotype has a lower concentration.
+* In addition, we can make "bad" homeostasis good by introducing drugs that reduce levels of ATF4 and ATF2 which can lower the overall Sox10 concentration. 
+
+## Limitations: 
+
+* The data analysed does provide us insight into how different proteins play a role in identifying high amounts of the Sox10 phenotype, however, there are other factors that influence this phenotype as well. 
+* This includes our environment and ancestry. 
+* For example, someone living in a country with high amounts of UV rays would be more likely to get skin cancer compared to those living in another environment. 
+* Thus the data cannot completely confirm the relationship between ATF4, ATF2 and the Sox10 phenotype. 
+
+
+
